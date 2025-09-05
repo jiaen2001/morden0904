@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>齒色心理測驗｜當代牙醫數位一日美齒中心</title>
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React / ReactDOM / Babel CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- html2canvas (for screenshot) -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+      /* 讓結果截圖更乾淨 */
+      #result-card * { -webkit-tap-highlight-color: transparent; }
+      /* 漂浮動畫 */
+      @keyframes float { 0%{transform:translateY(0)} 50%{transform:translateY(-20px)} 100%{transform:translateY(0)} }
+      .floating-bg { animation: float 6s ease-in-out infinite; }
+    </style>
+  </head>
+  <body class="bg-white relative overflow-hidden">
+    <!-- 背景牙齒精靈圖片：把 tooth-fairy.png 放在與 index.html 同資料夾即可 -->
+    <img src="./tooth-fairy.png" alt="tooth fairy" class="floating-bg opacity-20 absolute top-10 right-10 w-40 z-0 pointer-events-none" />
+
+    <div id="root" class="relative z-10"></div>
+
+    <script type="text/babel">
+      // ================================
+      // Minimal SPA (Hash Router)
+      // ================================
+      function useHashRoute() {
+        const [hash, setHash] = React.useState(() => window.location.hash || "#/" );
+        React.useEffect(() => {
+          const onHashChange = () => setHash(window.location.hash || "#/" );
+          window.addEventListener("hashchange", onHashChange);
+          if (!window.location.hash) window.location.hash = "#/"; // default
+          return () => window.removeEventListener("hashchange", onHashChange);
+        }, []);
+        const path = (hash || "#/").replace(/^#/, ""); // e.g. /quiz
+        return { path };
+      }
+
+      // ================================
+      // Data (Quiz JSON)
+      // ================================
+      const QUIZ_DATA = {
+        title: "測一測！屬於你的微笑齒色",
+        questions: [
+          {
+            id: "q1",
+            text: "你理想的假日是？",
+            options: [
+              { key: "A", label: "戶外踏青 / 運動" },
+              { key: "B", label: "咖啡廳閱讀 / 小旅行" },
+              { key: "C", label: "派對聚會 / 吃美食" },
+              { key: "D", label: "在家耍廢追劇" },
+            ],
+          },
+          {
+            id: "q2",
+            text: "第一印象最希望被認為？",
+            options: [
+              { key: "A", label: "清新自然" },
+              { key: "B", label: "氣質優雅" },
+              { key: "C", label: "活力自信" },
+              { key: "D", label: "個性獨特" },
+            ],
+          },
+          {
+            id: "q3",
+            text: "如果笑容是一種飲品，你會選？",
+            options: [
+              { key: "A", label: "檸檬水（清爽）" },
+              { key: "B", label: "拿鐵（溫和）" },
+              { key: "C", label: "氣泡飲（有活力）" },
+              { key: "D", label: "紅酒（有個性）" },
+            ],
+          },
+          {
+            id: "q4",
+            text: "自評膚色調性？（影響齒色冷暖）",
+            options: [
+              { key: "A", label: "冷調（偏粉、藍）" },
+              { key: "B", label: "中性（不特別偏冷或偏暖）" },
+              { key: "C", label: "暖調（偏黃、橄欖）" },
+              { key: "D", label: "不確定 / 需要協助判斷" },
+            ],
+          },
+        ],
+        // A/B/C/D：前三題為風格分（A 自然／B 優雅／C 活力／D 個性）；Q4 只決定冷暖調。
+        scoring: { A: "natural_white", B: "pearl_white", C: "bright_white", D: "signature_white" },
+        resultMeta: {
+          SHADES: {
+            BL1: { code: "BL1", name: "極致冷白" },
+            BL2: { code: "BL2", name: "清透冷白" },
+            BL3: { code: "BL3", name: "自然白晢" },
+            BL4: { code: "BL4", name: "自然健康" },
+            A1: { code: "A1", name: "原生淨白" },
+          },
+        },
+        results: {
+          natural_white: {
+            title: "自然白",
+            summary: "清新、親和，日常最耐看。越低調越自然。",
+            tips: ["偏低調者可優先考慮 BL3/BL4/A1","日常可用低敏美白牙膏維持亮度","避免高色素飲品後不即時清潔"],
+            chip: "#F5F5F5", baseShades: ["BL3","BL4","A1"],
+          },
+          pearl_white: {
+            title: "珍珠白",
+            summary: "溫柔有質感，精緻不張揚。",
+            tips: ["偏低調選 BL3/BL4，想更明亮可微調至 BL2","考慮專業美白療程建立基線亮度","定期拋光維持光澤感"],
+            chip: "#F7F7FA", baseShades: ["BL3","BL2","BL4"],
+          },
+          bright_white: {
+            title: "亮白色",
+            summary: "活力外向，舞台感更強。越活潑越亮白。",
+            tips: ["想要亮眼可優先 BL1/BL2","注意亮白與膚色對比，避免過亮","與醫師討論亮度上限與過渡期"],
+            chip: "#FFFFFF", baseShades: ["BL1","BL2","BL3"],
+          },
+          signature_white: {
+            title: "個性白",
+            summary: "獨特鮮明，辨識度高。",
+            tips: ["以形狀比例協調為前提，亮度可在 BL2–BL3 間找平衡","避免過度冷白造成不自然","可搭配局部貼片塑造風格"],
+            chip: "#EEF2FF", baseShades: ["BL2","BL3","BL4"],
+          },
+        },
+      };
+
+      // ================================
+      // Utilities
+      // ================================
+      function computeResult(answers) {
+        const counts = { A:0, B:0, C:0, D:0 };
+        ["q1","q2","q3"].forEach(id=>{ const k=answers[id]; if(k && counts[k]!==undefined) counts[k]++; });
+        const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+        const topKey = top ? top[0] : "A";
+        return QUIZ_DATA.scoring[topKey] || "natural_white";
+      }
+      function getSkinTone(answers){ const t=answers["q4"]; return t==="A"?"cool":t==="C"?"warm":t==="B"?"neutral":"unknown"; }
+      function suggestShades(resultKey, tone){
+        const base = QUIZ_DATA.results[resultKey].baseShades || ["BL3","BL4","A1"];
+        const pref = tone==="cool"?["BL1","BL2","BL3"]:tone==="warm"?["BL4","A1","BL3"]:["BL3","BL2","BL4"];
+        return [...new Set([...pref,...base])].slice(0,3);
+      }
+
+      // ================================
+      // UI Components & Brand Colors
+      // ================================
+      const BRAND = { primary:"#CBBBA6", primaryHover:"#B9A893", accent:"#6B6159", soft:"#F0ECE7", borderHover:"#D8CFC6", line:"#06C755" };
+      const Button = ({children, onClick, as="button", href, variant="primary", disabled, role, target}) => {
+        const base = "inline-flex items-center justify-center rounded-2xl text-sm font-medium px-4 py-2 transition shadow-sm";
+        const style = variant==='primary'?{backgroundColor:BRAND.primary,color:'#fff'}:variant==='accent'?{backgroundColor:BRAND.accent,color:'#fff'}:variant==='line'?{backgroundColor:BRAND.line,color:'#fff'}:undefined;
+        const cls = variant==='ghost' ? `${base} bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-[${BRAND.soft}]` : base;
+        return as==='a' ? (
+          <a className={cls} href={href} onClick={onClick} role={role} target={target} rel={target==='_blank'?"noreferrer":undefined} style={style}>{children}</a>
+        ) : (
+          <button className={cls} onClick={onClick} disabled={disabled} role={role} style={style}>{children}</button>
+        );
+      };
+      const Card = ({children}) => <div className="rounded-3xl border border-slate-200 shadow-sm p-6 bg-white">{children}</div>;
+      const Option = ({label,onClick}) => (
+        <button onClick={onClick} className="w-full text-left rounded-2xl border border-slate-200 px-4 py-3 transition focus:outline-none"
+          onMouseOver={e=>{ e.currentTarget.style.background=BRAND.soft; e.currentTarget.style.borderColor=BRAND.borderHover; }}
+          onMouseOut={e=>{ e.currentTarget.style.background=''; e.currentTarget.style.borderColor=''; }}
+        >{label}</button>
+      );
+      const FloatingCtas = () => (
+        <div className="fixed bottom-4 right-4 z-40 flex flex-col gap-3 pointer-events-auto">
+          <a href="https://www.instagram.com/digitalmodern/" target="_blank" rel="noreferrer" className="rounded-full shadow-md px-4 py-3 text-sm font-medium text-white" style={{backgroundColor:BRAND.accent}}>IG</a>
+          <a href="https://lin.ee/wJGmk5d" target="_blank" rel="noreferrer" className="rounded-full shadow-md px-4 py-3 text-sm font-medium text-white" style={{backgroundColor:BRAND.line}}>LINE</a>
+          <a href="https://www.moderndigital.com.tw/" target="_blank" rel="noreferrer" className="rounded-full shadow-md px-4 py-3 text-sm font-medium text-white" style={{backgroundColor:BRAND.primary}}>官網</a>
+        </div>
+      );
+
+      // ================================
+      // Pages
+      // ================================
+      function Header(){
+        return (
+          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur">
+            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+              <a href="#/" className="font-semibold tracking-tight" style={{color:BRAND.accent}}>當代牙醫數位一日美齒中心｜齒色心理測驗</a>
+              <nav className="text-sm gap-4 hidden sm:flex">
+                <a className="hover:underline" href="#/quiz">開始測驗</a>
+                <a className="hover:underline" href="#/consult">諮詢表單</a>
+                <a className="hover:underline" href="#/about">關於我們</a>
+                <a className="hover:underline" href="#/privacy">隱私</a>
+              </nav>
+            </div>
+          </header>
+        );
+      }
+      function Footer(){
+        return (
+          <footer className="border-t border-slate-200">
+            <div className="max-w-3xl mx-auto px-4 py-6 text-xs text-slate-500 flex flex-wrap gap-2 justify-between">
+              <div>© {new Date().getFullYear()} 當代牙醫數位一日美齒中心</div>
+              <div className="flex gap-4"><a href="#/privacy" className="hover:underline">隱私條款</a><a href="#/about" className="hover:underline">關於</a></div>
+            </div>
+          </footer>
+        );
+      }
+
+      function Home(){
+        return (
+          <>
+            <Header/>
+            <main className="max-w-3xl mx-auto px-4 py-8">
+              <section className="py-8">
+                <div className="text-center space-y-4">
+                  <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">測一測！屬於你的微笑齒色</h1>
+                  <p className="text-slate-600 max-w-2xl mx-auto">4 題、30 秒完成。根據你的風格傾向與膚色調性，推薦 BL/A1 齒色方向與保養建議。</p>
+                  <div className="flex flex-wrap justify-center gap-3 pt-2">
+                    <Button as="a" href="#/quiz" role="button">開始測驗</Button>
+                    <Button as="a" href="#/consult" role="button" variant="ghost">諮詢表單</Button>
+                    <Button as="a" href="https://lin.ee/wJGmk5d" role="button" target="_blank" variant="line">LINE 諮詢</Button>
+                  </div>
+                </div>
+              </section>
+              <section className="grid sm:grid-cols-3 gap-4 mt-10">
+                {["快速有趣","專業建議","可分享/諮詢"].map(t=> (
+                  <Card key={t}>
+                    <div className="text-lg font-semibold mb-1">{t}</div>
+                    <p className="text-sm text-slate-600">
+                      {t === "快速有趣" && "四題完成，體驗輕鬆。"}
+                      {t === "專業建議" && "對應齒色範圍與保養重點。"}
+                      {t === "可分享/諮詢" && "結果可分享，並可直接與我們聯繫。"}
+                    </p>
+                  </Card>
+                ))}
+              </section>
+            </main>
+            <FloatingCtas/>
+            <Footer/>
+          </>
+        );
+      }
+
+      function Quiz(){
+        const total = QUIZ_DATA.questions.length;
+        const [step,setStep] = React.useState(0);
+        const [answers,setAnswers] = React.useState({});
+        const q = QUIZ_DATA.questions[step];
+        const select = (k) => {
+          const next = { ...answers, [q.id]: k };
+          setAnswers(next);
+          if (step < total-1) setStep(step+1); else {
+            const resultKey = computeResult(next);
+            const tone = getSkinTone(next);
+            window.location.hash = `#/result?type=${resultKey}&tone=${tone}`;
+          }
+        };
+        return (
+          <>
+            <Header/>
+            <main className="max-w-3xl mx-auto px-4 py-8">
+              <div className="max-w-2xl mx-auto space-y-6">
+                <Card>
+                  <div className="text-sm font-medium mb-1" style={{color:BRAND.accent}}>第 {step+1} 題</div>
+                  <h2 className="text-2xl font-semibold mb-4">{q.text}</h2>
+                  <div className="grid gap-3">
+                    {q.options.map(op => <Option key={op.key} label={op.label} onClick={()=>select(op.key)}/>)}
+                  </div>
+                  <div className="flex justify-between items-center mt-6">
+                    <Button variant="ghost" as="a" href="#/" role="button">回首頁</Button>
+                    <div className="text-slate-500 text-sm">已選：{answers[q.id] ? q.options.find((o)=>o.key===answers[q.id])?.label : "—"}</div>
+                  </div>
+                </Card>
+              </div>
+            </main>
+            <FloatingCtas/>
+            <Footer/>
+          </>
+        );
+      }
+
+      function Result(){
+        const params = new URLSearchParams((window.location.hash.split("?")[1] || ""));
+        const key = params.get("type") || "natural_white";
+        const tone = params.get("tone") || "unknown";
+        const data = QUIZ_DATA.results[key];
+        const shades = suggestShades(key, tone);
+
+        const cardRef = React.useRef(null);
+        const downloadShot = async () => {
+          if(!cardRef.current) return;
+          const canvas = await html2canvas(cardRef.current, { scale:2, backgroundColor:'#ffffff' });
+          const url = canvas.toDataURL('image/png');
+          const a = document.createElement('a'); a.href=url; a.download=`teeth-shade-${key}.png`; a.click();
+        };
+
+        return (
+          <>
+            <Header/>
+            <main className="max-w-3xl mx-auto px-4 py-8">
+              <div className="max-w-2xl mx-auto space-y-6" ref={cardRef} id="result-card">
+                <Card>
+                  <div className="text-sm font-medium mb-2" style={{color:BRAND.accent}}>測驗結果</div>
+                  <h1 className="text-3xl font-bold tracking-tight mb-2">你的齒色風格是「{data.title}」</h1>
+                  <p className="text-slate-600 mb-4">{data.summary}</p>
+
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="text-xs text-slate-500">示意齒色：</div>
+                    <div className="h-8 w-24 rounded-full border border-slate-200" style={{background:data.chip}} />
+                    <div className="h-8 w-24 rounded-full border border-slate-200 bg-white" />
+                  </div>
+
+                  <h2 className="text-lg font-semibold mb-2">推薦齒色（概念示意）</h2>
+                  <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                    {shades.map(code => (
+                      <div key={code} className="rounded-2xl border border-slate-200 p-3">
+                        <div className="text-sm font-medium mb-2">{code} · {QUIZ_DATA.resultMeta.SHADES[code].name}</div>
+                        <div className="h-8 w-full rounded-full border border-slate-200" style={{ background: code==='A1'?'#F3EFE6': code==='BL4'?'#F1F2EE': code==='BL3'?'#F5F5F5': code==='BL2'?'#FBFBFD':'#FFFFFF' }} />
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-slate-500 mb-4">依理念：<strong>越低調 → 越自然</strong>（BL3/BL4/A1）；<strong>越活潑亮眼 → 越亮白</strong>（BL1/BL2）。膚色調性建議優先選擇同調色系。</p>
+
+                  <h2 className="text-lg font-semibold mb-2">專業小建議</h2>
+                  <ul className="list-disc pl-5 text-slate-700 space-y-1">
+                    {data.tips.map((t,i)=>(<li key={i}>{t}</li>))}
+                  </ul>
+
+                  <div className="flex flex-wrap gap-3 mt-6">
+                    <Button onClick={downloadShot}>下載結果截圖</Button>
+                    <Button as="a" href="#/quiz" variant="ghost">再玩一次</Button>
+                    <Button as="a" href="#/about" variant="ghost">關於我們</Button>
+                    <Button as="a" href="https://lin.ee/wJGmk5d" target="_blank" variant="line">LINE 諮詢</Button>
+                  </div>
+                </Card>
+              </div>
+            </main>
+            <FloatingCtas/>
+            <Footer/>
+          </>
+        );
+      }
+
+      function About(){
+        return (
+          <>
+            <Header/>
+            <main className="max-w-3xl mx-auto px-4 py-8">
+              <div className="max-w-2xl mx-auto space-y-6">
+                <Card>
+                  <h1 className="text-2xl font-bold mb-2">關於我們</h1>
+                  <p className="text-slate-600">我們是「當代牙醫數位一日美齒中心」，專注於美學牙科（數位微笑設計、專業美白、瓷貼片）。本測驗僅供參考，實際齒色選擇需與醫師面談評估。</p>
+                </Card>
+              </div>
+            </main>
+            <FloatingCtas/>
+            <Footer/>
+          </>
+        );
+      }
+
+      function Privacy(){
+        return (
+          <>
+            <Header/>
+            <main className="max-w-3xl mx-auto px-4 py-8">
+              <div className="max-w-2xl mx-auto space-y-6">
+                <Card>
+                  <h1 className="text-2xl font-bold mb-2">隱私條款</h1>
+                  <p className="text-slate-600 text-sm leading-6">本網站不會主動蒐集個人資料。若您選擇使用 Email 寄送結果，我們僅會將您填寫的內容寄出，並不會儲存於伺服端。</p>
+                </Card>
+              </div>
+            </main>
+            <FloatingCtas/>
+            <Footer/>
+          </>
+        );
+      }
+
+      function Consult(){
+        const [form, setForm] = React.useState({ name:'', phone:'', email:'', note:'' });
+        const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+        const mailto = () => {
+          const subject = encodeURIComponent('諮詢：齒色心理測驗');
+          const body = encodeURIComponent(`姓名：${form.name}
+電話：${form.phone}
+Email：${form.email}
+需求：${form.note}`);
+          window.location.href = `mailto:hello@example.com?subject=${subject}&body=${body}`;
+        };
+        return (
+          <>
+            <Header/>
+            <main className="max-w-3xl mx-auto px-4 py-8">
+              <div className="max-w-2xl mx-auto space-y-6">
+                <Card>
+                  <h1 className="text-2xl font-bold mb-2">線上諮詢表單</h1>
+                  <p className="text-slate-600 mb-4">留下聯絡方式，我們將由「當代牙醫數位一日美齒中心」回覆您。</p>
+                  <div className="grid gap-3">
+                    <input name="name" placeholder="姓名" className="rounded-2xl border border-slate-300 px-3 py-2" value={form.name} onChange={onChange} />
+                    <input name="phone" placeholder="電話" className="rounded-2xl border border-slate-300 px-3 py-2" value={form.phone} onChange={onChange} />
+                    <input name="email" placeholder="Email" className="rounded-2xl border border-slate-300 px-3 py-2" value={form.email} onChange={onChange} />
+                    <textarea name="note" placeholder="想了解的內容（例如：想做貼片 / 美白 / 諮詢費用）" className="rounded-2xl border border-slate-300 px-3 py-2" rows="4" value={form.note} onChange={onChange} />
+                  </div>
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    <Button onClick={mailto}>Email 送出</Button>
+                    <Button as="a" href="https://lin.ee/wJGmk5d" target="_blank" variant="line">LINE 立即諮詢</Button>
+                    <Button variant="ghost" as="a" href="#/">回首頁</Button>
+                  </div>
+                </Card>
+              </div>
+            </main>
+            <FloatingCtas/>
+            <Footer/>
+          </>
+        );
+      }
+
+      // ================================
+      // App
+      // ================================
+      function TeethShadeQuizApp(){
+        const { path } = useHashRoute();
+        if (path.startsWith('/quiz')) return <Quiz/>;
+        if (path.startsWith('/result')) return <Result/>;
+        if (path.startsWith('/consult')) return <Consult/>;
+        if (path.startsWith('/about')) return <About/>;
+        if (path.startsWith('/privacy')) return <Privacy/>;
+        return <Home/>;
+      }
+    </script>
+
+    <script type="text/babel">
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<TeethShadeQuizApp />);
+    </script>
+  </body>
+</html>
+
